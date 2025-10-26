@@ -8,14 +8,31 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const helmet = require("helmet");
 const User = require("./models/user");
 const Service = require("./models/Service");
 const { auth, adminAuth } = require("./middleware/auth");
 const imagesRouter = require("./routes/images");
 
 const app = express();
+
+// --- Middleware ---
 app.use(cors());
 app.use(express.json());
+
+// --- Content Security Policy (CSP) with Helmet ---
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "https://*.mongodb.net", "https://gypsum-app.onrender.com"],
+    },
+  })
+);
 
 // --- Constants ---
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
@@ -40,7 +57,7 @@ transporter.verify((error) => {
 // --- Multer for image uploads ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
@@ -50,7 +67,7 @@ const upload = multer({ storage });
 
 // --- Generate JWT ---
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
 // --- CONTACT FORM ---
@@ -107,7 +124,7 @@ app.post("/api/signup", async (req, res) => {
       name,
       email,
       password,
-      role: email === ADMIN_EMAIL ? 'admin' : 'user',
+      role: email === ADMIN_EMAIL ? "admin" : "user",
     });
     await user.save();
 
@@ -156,7 +173,12 @@ app.get("/api/auth/me", auth, async (req, res) => {
   try {
     res.json({
       success: true,
-      user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role },
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+      },
     });
   } catch (error) {
     res.status(500).json({ error: "Internal server error." });
@@ -176,7 +198,7 @@ app.post("/api/forgot-password", async (req, res) => {
       from: ADMIN_EMAIL,
       to: email,
       subject: "Reset Your Password",
-      text: `Hello,\n\nHere is your password reset link (dummy): http://localhost:3000/reset\n\nBest regards`,
+      text: `Hello,\n\nHere is your password reset link: https://gypsum-app.onrender.com/reset\n\nBest regards`,
     });
     res.status(200).json({ message: "Reset link sent." });
   } catch (error) {
@@ -186,68 +208,68 @@ app.post("/api/forgot-password", async (req, res) => {
 });
 
 // --- SERVICE ROUTES ---
-// Get all services
 app.get("/api/services", async (req, res) => {
   try {
     const services = await Service.find({ isActive: true });
     res.json({ success: true, services });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// Add service (admin only)
-app.post("/api/services", adminAuth, upload.single('image'), async (req, res) => {
+app.post("/api/services", adminAuth, upload.single("image"), async (req, res) => {
   try {
     const { title, description, link } = req.body;
-    const image = req.file ? `/uploads/${req.file.filename}` : '';
+    const image = req.file ? `/uploads/${req.file.filename}` : "";
 
     if (!title || !description || !image) {
-      return res.status(400).json({ error: "Title, description and image are required." });
+      return res
+        .status(400)
+        .json({ error: "Title, description and image are required." });
     }
 
     const service = new Service({
       title,
       description,
       image,
-      link: link || '', 
+      link: link || "",
     });
 
     await service.save();
     res.status(201).json({ success: true, service });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// Update service (admin only)
-app.put("/api/services/:id", adminAuth, upload.single('image'), async (req, res) => {
+app.put("/api/services/:id", adminAuth, upload.single("image"), async (req, res) => {
   try {
     const { title, description, link } = req.body;
     const updateData = { title, description, link };
     if (req.file) updateData.image = `/uploads/${req.file.filename}`;
 
-    const service = await Service.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    const service = await Service.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+    });
     if (!service) {
-      return res.status(404).json({ success: false, message: 'Service not found' });
+      return res.status(404).json({ success: false, message: "Service not found" });
     }
     res.json({ success: true, service });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
-// Delete service (admin only)
 app.delete("/api/services/:id", adminAuth, async (req, res) => {
   try {
     const service = await Service.findByIdAndDelete(req.params.id);
     if (!service) {
-      return res.status(404).json({ success: false, message: 'Service not found' });
+      return res.status(404).json({ success: false, message: "Service not found" });
     }
-    res.json({ success: true, message: 'Service deleted' });
+    res.json({ success: true, message: "Service deleted" });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error' });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
@@ -256,7 +278,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/images", imagesRouter);
 
 // --- SERVE REACT FRONTEND ---
-
+app.use(express.static(path.join(__dirname, "../frontend/build")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
+});
 
 // --- CONNECT TO MONGODB AND START SERVER ---
 mongoose
