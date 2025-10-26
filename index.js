@@ -1,4 +1,3 @@
-// --- Load environment variables ---
 require("dotenv").config();
 
 const express = require("express");
@@ -7,7 +6,11 @@ const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
 const path = require("path");
+const jwt = require("jsonwebtoken");
+const multer = require("multer");
 const User = require("./models/user");
+const Service = require("./models/Service");
+const { auth, adminAuth } = require("./middleware/auth");
 const imagesRouter = require("./routes/images");
 
 const app = express();
@@ -33,6 +36,22 @@ transporter.verify((error) => {
     console.log("✅ Nodemailer is ready to send emails");
   }
 });
+
+// --- Multer for image uploads ---
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+const upload = multer({ storage });
+
+// --- Generate JWT ---
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+};
 
 // --- CONTACT FORM ---
 app.post("/api/contact", async (req, res) => {
@@ -73,7 +92,7 @@ ${message}
   }
 });
 
-// === SIGNUP ===
+// --- SIGNUP ---
 app.post("/api/signup", async (req, res) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
@@ -84,44 +103,75 @@ app.post("/api/signup", async (req, res) => {
     const userExists = await User.findOne({ email });
     if (userExists) return res.status(409).json({ error: "Email already exists." });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ name, email, password: hashedPassword });
-    await newUser.save();
+    const user = new User({
+      name,
+      email,
+      password,
+      role: email === ADMIN_EMAIL ? 'admin' : 'user',
+    });
+    await user.save();
 
-    res.status(201).json({ message: "Signup successful." });
+    const token = generateToken(user._id);
+    res.status(201).json({
+      success: true,
+      message: "Signup successful.",
+      token,
+      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    });
   } catch (error) {
     console.error("Signup Error:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
 
-// === LOGIN ===
+// --- LOGIN ---
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
+  if (!email || !password) {
     return res.status(400).json({ error: "Email and password are required." });
+  }
 
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: "User not found." });
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) return res.status(401).json({ error: "Incorrect password." });
 
-    const isAdmin = email === ADMIN_EMAIL;
-    res.status(200).json({ message: "Login successful.", isAdmin });
+    const token = generateToken(user._id);
+    res.status(200).json({
+      success: true,
+      message: "Login successful.",
+      token,
+      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    });
   } catch (error) {
     console.error("Login Error:", error);
     res.status(500).json({ error: "Internal server error." });
   }
 });
 
-// === FORGOT PASSWORD ===
+// --- GET CURRENT USER ---
+app.get("/api/auth/me", auth, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+// --- FORGOT PASSWORD ---
 app.post("/api/forgot-password", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "Email is required." });
 
   try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found." });
+
     await transporter.sendMail({
       from: ADMIN_EMAIL,
       to: email,
@@ -135,17 +185,84 @@ app.post("/api/forgot-password", async (req, res) => {
   }
 });
 
-// === STATIC FILES ===
+// --- SERVICE ROUTES ---
+// Get all services
+app.get("/api/services", async (req, res) => {
+  try {
+    const services = await Service.find({ isActive: true });
+    res.json({ success: true, services });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Add service (admin only)
+app.post("/api/services", adminAuth, upload.single('image'), async (req, res) => {
+  try {
+    const { title, description, link } = req.body;
+    const image = req.file ? `/uploads/${req.file.filename}` : '';
+
+    if (!title || !description || !image) {
+      return res.status(400).json({ error: "Title, description and image are required." });
+    }
+
+    const service = new Service({
+      title,
+      description,
+      image,
+      link: link || '', 
+    });
+
+    await service.save();
+    res.status(201).json({ success: true, service });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Update service (admin only)
+app.put("/api/services/:id", adminAuth, upload.single('image'), async (req, res) => {
+  try {
+    const { title, description, link } = req.body;
+    const updateData = { title, description, link };
+    if (req.file) updateData.image = `/uploads/${req.file.filename}`;
+
+    const service = await Service.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    if (!service) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+    res.json({ success: true, service });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Delete service (admin only)
+app.delete("/api/services/:id", adminAuth, async (req, res) => {
+  try {
+    const service = await Service.findByIdAndDelete(req.params.id);
+    if (!service) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+    res.json({ success: true, message: 'Service deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// --- STATIC FILES ---
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/images", imagesRouter);
 
-// === SERVE REACT FRONTEND ===
+// --- SERVE REACT FRONTEND ---
 app.use(express.static(path.join(__dirname, "../frontend/build")));
-app.get("/", (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
 });
 
-// === CONNECT TO MONGODB AND START SERVER ===
+
+// --- CONNECT TO MONGODB AND START SERVER ---
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
