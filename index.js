@@ -1,5 +1,7 @@
 require("dotenv").config();
 
+const { join } = require("path");
+
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
@@ -278,9 +280,11 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/images", imagesRouter);
 
 // --- SERVE REACT FRONTEND ---
-app.use(express.static(path.join(__dirname, "../frontend/build")));
-app.get("/*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
+app.use(express.static(join(__dirname, "../frontend/build")));
+
+// Et ici on capture *toutes les routes restantes* (Express 5 compatible)
+app.use((req, res, next) => {
+  res.sendFile(join(__dirname, "../frontend/build", "index.html"));
 });
 
 // --- CONNECT TO MONGODB AND START SERVER ---
