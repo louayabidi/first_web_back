@@ -1,6 +1,5 @@
 require("dotenv").config();
 
-const { join } = require("path");
 
 const express = require("express");
 const cors = require("cors");
@@ -279,13 +278,6 @@ app.delete("/api/services/:id", adminAuth, async (req, res) => {
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/images", imagesRouter);
 
-// --- SERVE REACT FRONTEND ---
-app.use(express.static(join(__dirname, "../frontend/build")));
-
-// Et ici on capture *toutes les routes restantes* (Express 5 compatible)
-app.use((req, res, next) => {
-  res.sendFile(join(__dirname, "../frontend/build", "index.html"));
-});
 
 // --- CONNECT TO MONGODB AND START SERVER ---
 mongoose
