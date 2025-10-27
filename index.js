@@ -14,6 +14,7 @@ const User = require("./models/user");
 const Service = require("./models/Service");
 const { auth, adminAuth } = require("./middleware/auth");
 const imagesRouter = require("./routes/images");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 
@@ -40,6 +41,10 @@ app.use(
     },
   })
 );
+
+
+
+app.use("/api", authRoutes);
 
 // --- Constants ---
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
@@ -116,64 +121,8 @@ ${message}
   }
 });
 
-// --- SIGNUP ---
-app.post("/api/signup", async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "All fields are required." });
-  }
 
-  try {
-    const userExists = await User.findOne({ email });
-    if (userExists) return res.status(409).json({ error: "Email already exists." });
 
-    const user = new User({
-      name,
-      email,
-      password,
-      role: email === ADMIN_EMAIL ? "admin" : "user",
-    });
-    await user.save();
-
-    const token = generateToken(user._id);
-    res.status(201).json({
-      success: true,
-      message: "Signup successful.",
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
-  } catch (error) {
-    console.error("Signup Error:", error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
-
-// --- LOGIN ---
-app.post("/api/login", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
-  }
-
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ error: "User not found." });
-
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(401).json({ error: "Incorrect password." });
-
-    const token = generateToken(user._id);
-    res.status(200).json({
-      success: true,
-      message: "Login successful.",
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
-  } catch (error) {
-    console.error("Login Error:", error);
-    res.status(500).json({ error: "Internal server error." });
-  }
-});
 
 // --- GET CURRENT USER ---
 app.get("/api/auth/me", auth, async (req, res) => {
