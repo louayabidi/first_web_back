@@ -18,7 +18,13 @@ const imagesRouter = require("./routes/images");
 const app = express();
 
 // --- Middleware ---
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "https://first-web-front.onrender.com"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
 // --- Content Security Policy (CSP) with Helmet ---
