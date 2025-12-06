@@ -20,8 +20,13 @@ const app = express();
 
 // --- Middleware ---
 app.use(
-  cors({
-    origin: ["http://localhost:3000", "https://first-web-front.onrender.com"],
+ cors({
+    origin: [
+      "http://localhost:3000",          
+     // "https://first-web-front.onrender.com", // si tu as un front Render (test)
+      "https://superstuff.fr",          // ton domaine prod
+      "https://www.superstuff.fr"       // au cas où www est utilisé
+    ],
     credentials: true,
   })
 );
